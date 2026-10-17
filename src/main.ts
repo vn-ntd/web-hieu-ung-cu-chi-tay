@@ -2,6 +2,8 @@ import { ParticleSystem } from './ParticleSystem';
 import { HandTracker, type Gesture } from './HandTracker';
 import { UIManager } from './UIManager';
 
+const PARTICLE_COUNT = 2500;
+
 class App {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
@@ -20,16 +22,17 @@ class App {
     if (!container) throw new Error('Canvas container not found');
 
     this.canvas = document.createElement('canvas');
+    this.canvas.width = window.innerWidth;
+    this.canvas.height = window.innerHeight;
     this.ctx = this.canvas.getContext('2d', { alpha: false }) as CanvasRenderingContext2D;
     container.appendChild(this.canvas);
 
-    this._handleResize();
-    window.addEventListener('resize', () => this._handleResize());
-
     // Initialize systems
-    this.particleSystem = new ParticleSystem(this.ctx, this.canvas.width, this.canvas.height, 2600);
+    this.particleSystem = new ParticleSystem(this.ctx, this.canvas.width, this.canvas.height, PARTICLE_COUNT);
     this.uiManager = new UIManager();
     this.handTracker = new HandTracker('webcam');
+
+    window.addEventListener('resize', () => this._handleResize());
 
     this._setupTrackerCallbacks();
     this._setupPointerInteractions();
@@ -43,7 +46,7 @@ class App {
     this.canvas.width = window.innerWidth;
     this.canvas.height = window.innerHeight;
     if (this.particleSystem) {
-      this.particleSystem.resize(this.canvas.width, this.canvas.height);
+      this.particleSystem.resize(this.canvas.width, this.canvas.height, true);
     }
   }
 
@@ -83,14 +86,14 @@ class App {
 
     // Touch support for mobile devices
     window.addEventListener('touchstart', (e) => {
-      if (e.touches.length > 0) {
+      if (e.touches && e.touches.length > 0) {
         this.isPointerDown = true;
         onMove(e.touches[0].clientX, e.touches[0].clientY);
       }
     }, { passive: true });
 
     window.addEventListener('touchmove', (e) => {
-      if (e.touches.length > 0) {
+      if (e.touches && e.touches.length > 0) {
         onMove(e.touches[0].clientX, e.touches[0].clientY);
       }
     }, { passive: true });
@@ -104,33 +107,39 @@ class App {
     this.uiManager.onManualGestureSelect = (gesture: Gesture) => {
       this.manualGesture = gesture;
       if (this.manualGestureTimeout) window.clearTimeout(this.manualGestureTimeout);
-      // Reset manual lock after 12 seconds of inactivity so camera AI resumes
+      // Reset manual lock after 15 seconds of inactivity so camera AI resumes
       this.manualGestureTimeout = window.setTimeout(() => {
         this.manualGesture = null;
-      }, 12000);
+      }, 15000);
     };
   }
 
   private _loop(_time: number) {
-    // 1. Motion blur fade pass (pure 2D context)
-    this.ctx.globalCompositeOperation = 'source-over';
-    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-    // 2. Predict camera landmarks
-    this.handTracker.predict();
-
-    // 3. Determine active gesture
-    const activeGesture = this.manualGesture ?? this.handTracker.currentGesture;
-
-    // 4. Update & render particle simulation
-    this.particleSystem.update(
-      this.handTracker.smoothLandmarks,
-      activeGesture,
-      this.isPointerDown || !this.handTracker.smoothLandmarks ? this.pointer : null
-    );
-
+    // 1. ALWAYS request next frame immediately to guarantee render loop never freezes
     requestAnimationFrame((t) => this._loop(t));
+
+    try {
+      // 2. Motion blur fade pass
+      this.ctx.globalCompositeOperation = 'source-over';
+      this.ctx.fillStyle = 'rgba(0, 0, 0, 0.14)';
+      this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+      // 3. Predict camera landmarks
+      this.handTracker.predict();
+
+      // 4. Determine active gesture
+      const activeGesture = this.manualGesture ?? this.handTracker.currentGesture;
+
+      // 5. Update & render particle simulation
+      const fallback = (this.isPointerDown || !this.handTracker.smoothLandmarks) ? this.pointer : null;
+      this.particleSystem.update(
+        this.handTracker.smoothLandmarks,
+        activeGesture,
+        fallback
+      );
+    } catch (err) {
+      console.error('Safe loop caught error:', err);
+    }
   }
 }
 

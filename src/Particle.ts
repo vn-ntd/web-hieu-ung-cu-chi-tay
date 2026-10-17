@@ -34,6 +34,7 @@ export class Particle {
    * Arrive steering algorithm with pure scalar math (zero allocations)
    */
   public arrive(tx: number, ty: number, slowdownRadius: number = 180, forceMultiplier: number = 1.0) {
+    if (isNaN(tx) || isNaN(ty)) return;
     const dx = tx - this.x;
     const dy = ty - this.y;
     const d = Math.hypot(dx, dy);

@@ -175,6 +175,7 @@ export class HandTracker {
    * Robust finger extension detection relative to wrist
    */
   private _classifyGesture(lm: NormalizedLandmark[]): Gesture {
+    if (!lm || lm.length < 21) return 'None';
     const w = lm[0]; // wrist
 
     const d2 = (a: NormalizedLandmark, b: NormalizedLandmark) => {

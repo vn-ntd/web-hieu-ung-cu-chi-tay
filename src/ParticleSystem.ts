@@ -29,6 +29,7 @@ const STAR_PALETTES = [
 
 export class ParticleSystem {
   public particles: Particle[] = [];
+  public count: number;
   private width: number;
   private height: number;
   private ctx: CanvasRenderingContext2D;
@@ -69,6 +70,12 @@ export class ParticleSystem {
     this.ctx = ctx;
     this.width = width;
     this.height = height;
+    this.count = count;
+
+    this._canvasCenter.x = width * 0.5;
+    this._canvasCenter.y = height * 0.5;
+    this._palmCenter.x = this._canvasCenter.x;
+    this._palmCenter.y = this._canvasCenter.y;
 
     this._saturnAngle  = new Float32Array(count);
     this._saturnRadius = new Float32Array(count);
@@ -84,9 +91,8 @@ export class ParticleSystem {
     this._buckets   = Array.from({ length: NUM_BUCKETS }, () => new Int32Array(count));
     this._bucketLen = new Int32Array(NUM_BUCKETS);
 
-    this.resize(width, height, false);
     this._initParticles(count);
-    this._buildStarPositions();
+    this.resize(width, height, true);
   }
 
   public resize(width: number, height: number, reinitStars = true) {
@@ -95,11 +101,10 @@ export class ParticleSystem {
     this._canvasCenter.x = width * 0.5;
     this._canvasCenter.y = height * 0.5;
 
-    const count = this.particles.length || 2500;
-    this._heartOffsets = this._genHeartOffsets(count);
-    this._loveLetterOffsets = this._genLoveLetterOffsets(count);
+    this._heartOffsets = this._genHeartOffsets(this.count);
+    this._loveLetterOffsets = this._genLoveLetterOffsets(this.count);
 
-    if (reinitStars) {
+    if (reinitStars || !this._starPositions) {
       this._buildStarPositions();
     }
   }
@@ -148,14 +153,14 @@ export class ParticleSystem {
   }
 
   private _buildStarPositions() {
-    const count = this.particles.length || 2500;
+    const count = this.count;
     const pos = new Array<Vec2>(count);
     const pal = new Uint8Array(count);
     const twk = new Float32Array(count);
     const twkSpd = new Float32Array(count);
 
-    const cols = Math.ceil(Math.sqrt(count * (this.width / this.height)));
-    const rows = Math.ceil(count / cols);
+    const cols = Math.max(1, Math.ceil(Math.sqrt(count * (this.width / Math.max(1, this.height)))));
+    const rows = Math.max(1, Math.ceil(count / cols));
     const cellW = this.width / cols;
     const cellH = this.height / rows;
 
@@ -179,6 +184,7 @@ export class ParticleSystem {
 
   private _initParticles(count: number) {
     const shortSide = Math.min(this.width, this.height);
+    this.particles = [];
 
     for (let i = 0; i < count; i++) {
       const part = new Particle(Math.random() * this.width, Math.random() * this.height);
@@ -209,7 +215,7 @@ export class ParticleSystem {
     gesture: Gesture,
     pointerFallback?: { x: number; y: number } | null
   ) {
-    const count = this.particles.length;
+    const count = this.count;
     this._hueTime += 0.4;
     this._heartBeatTime += 0.04;
 
@@ -218,17 +224,19 @@ export class ParticleSystem {
 
     if (landmarks && landmarks.length >= 21) {
       hasHand = true;
-      const rawPalm = landmarks[9]; // Middle MCP is good palm anchor
-      this._palmCenter.x = (1 - rawPalm.x) * this.width;
-      this._palmCenter.y = rawPalm.y * this.height;
-    } else if (pointerFallback) {
+      const rawPalm = landmarks[9]; // Middle MCP is reliable palm anchor
+      if (rawPalm && !isNaN(rawPalm.x) && !isNaN(rawPalm.y)) {
+        this._palmCenter.x = (1 - rawPalm.x) * this.width;
+        this._palmCenter.y = rawPalm.y * this.height;
+      }
+    } else if (pointerFallback && !isNaN(pointerFallback.x) && !isNaN(pointerFallback.y)) {
       hasHand = true;
       this._palmCenter.x = pointerFallback.x;
       this._palmCenter.y = pointerFallback.y;
     }
 
-    if (!hasHand && mode === 'None') {
-      mode = 'StarryNight';
+    if (mode === 'None') {
+      mode = hasHand ? 'Saturn' : 'StarryNight';
     }
 
     const baseX = hasHand ? this._palmCenter.x : this._canvasCenter.x;
@@ -239,9 +247,10 @@ export class ParticleSystem {
       ? 1 + 0.085 * Math.sin(this._heartBeatTime * 7) + 0.04 * Math.sin(this._heartBeatTime * 14)
       : 1;
 
-    // Physics Update pass
+    // Physics Update pass (with complete index safety)
     for (let i = 0; i < count; i++) {
       const par = this.particles[i];
+      if (!par) continue;
 
       if (mode === 'Saturn') {
         if (this._saturnIsCore[i]) {
@@ -258,13 +267,15 @@ export class ParticleSystem {
           par.arrive(baseX + rx, baseY + ry * 0.98 + rx * 0.21, 24, 5.0);
         }
       } else if (mode === 'LoveLetter') {
+        const offset = this._loveLetterOffsets[i] || { x: 0, y: 0 };
         const floatWave = Math.sin(this._heartBeatTime * 4 + i * 0.01) * 3.5;
-        par.arrive(baseX + this._loveLetterOffsets[i].x, baseY + this._loveLetterOffsets[i].y + floatWave, 32, 5.0);
+        par.arrive(baseX + offset.x, baseY + offset.y + floatWave, 32, 5.0);
       } else if (mode === 'Heart') {
-        const hx = this._heartOffsets[i].x * heartPulse;
-        const hy = this._heartOffsets[i].y * heartPulse;
+        const offset = this._heartOffsets[i] || { x: 0, y: 0 };
+        const hx = offset.x * heartPulse;
+        const hy = offset.y * heartPulse;
         par.arrive(baseX + hx, baseY + hy, 28, 5.8);
-      } else if (mode === 'StarryNight' && this._starPositions) {
+      } else if (mode === 'StarryNight' && this._starPositions && this._starPositions[i]) {
         par.arrive(this._starPositions[i].x, this._starPositions[i].y, 65, 4.5);
       } else {
         // Idle Galaxy wander
@@ -285,7 +296,7 @@ export class ParticleSystem {
 
   private _render(mode: Gesture) {
     const ctx = this.ctx;
-    const count = this.particles.length;
+    const count = this.count;
     const ht = this._hueTime;
 
     ctx.globalCompositeOperation = 'screen';
@@ -299,31 +310,37 @@ export class ParticleSystem {
       // Outer glow halo
       ctx.fillStyle = 'rgba(70, 160, 255, 0.022)';
       ctx.beginPath();
-      for (let i = 0; i < count; i++) this.particles[i].addGlowToPath(ctx);
+      for (let i = 0; i < count; i++) {
+        if (this.particles[i]) this.particles[i].addGlowToPath(ctx);
+      }
       ctx.fill();
 
-      // Bucket stars by palette and alpha level (6 palettes × 4 alpha bins = 24 draw calls)
+      // Bucket stars by palette and alpha level
       const NUM_PALS = STAR_PALETTES.length;
       const ALPHA_BINS = 4;
       const starBuckets: number[][] = Array.from({ length: NUM_PALS * ALPHA_BINS }, () => []);
 
       for (let i = 0; i < count; i++) {
-        const palIdx = this._starPalettes[i];
+        const palIdx: number = (this._starPalettes[i] || 0) % NUM_PALS;
         const normTwinkle = 0.5 + 0.5 * Math.sin(this._starTwinkle[i]);
-        const alphaBin = Math.min(ALPHA_BINS - 1, Math.floor(normTwinkle * ALPHA_BINS));
-        starBuckets[palIdx * ALPHA_BINS + alphaBin].push(i);
+        const alphaBin = Math.max(0, Math.min(ALPHA_BINS - 1, Math.floor(normTwinkle * ALPHA_BINS)));
+        const targetIndex = palIdx * ALPHA_BINS + alphaBin;
+        if (starBuckets[targetIndex]) {
+          starBuckets[targetIndex].push(i);
+        }
       }
 
       for (let p = 0; p < NUM_PALS; p++) {
         const pal = STAR_PALETTES[p];
         for (let a = 0; a < ALPHA_BINS; a++) {
           const list = starBuckets[p * ALPHA_BINS + a];
-          if (!list.length) continue;
+          if (!list || !list.length) continue;
           const alpha = 0.35 + ((a + 0.5) / ALPHA_BINS) * 0.65;
           ctx.fillStyle = `hsla(${pal.h}, ${pal.s}%, ${pal.l}%, ${alpha.toFixed(2)})`;
           ctx.beginPath();
           for (let k = 0; k < list.length; k++) {
-            this.particles[list[k]].addArcToPath(ctx);
+            const par = this.particles[list[k]];
+            if (par) par.addArcToPath(ctx);
           }
           ctx.fill();
         }
@@ -337,7 +354,9 @@ export class ParticleSystem {
     // Pass 1: Soft Ambient Glow
     ctx.fillStyle = `hsla(${(ht * 0.35) % 360}, 100%, 60%, 0.035)`;
     ctx.beginPath();
-    for (let i = 0; i < count; i++) this.particles[i].addGlowToPath(ctx);
+    for (let i = 0; i < count; i++) {
+      if (this.particles[i]) this.particles[i].addGlowToPath(ctx);
+    }
     ctx.fill();
 
     // Pass 2: 36 Hue buckets
@@ -345,9 +364,15 @@ export class ParticleSystem {
     for (let b = 0; b < NB; b++) this._bucketLen[b] = 0;
 
     for (let i = 0; i < count; i++) {
-      const hue = (ht + this.particles[i].hueOffset) % 360;
+      const par = this.particles[i];
+      if (!par) continue;
+      const hue = Math.abs(ht + par.hueOffset) % 360;
       const bucket = Math.floor(hue / BD) % NB;
-      this._buckets[bucket][this._bucketLen[bucket]++] = i;
+      const currentLen = this._bucketLen[bucket];
+      if (currentLen < this._buckets[bucket].length) {
+        this._buckets[bucket][currentLen] = i;
+        this._bucketLen[bucket]++;
+      }
     }
 
     let lightness = 64, alpha = 0.90;
@@ -363,7 +388,8 @@ export class ParticleSystem {
       ctx.beginPath();
       const arr = this._buckets[b];
       for (let j = 0; j < len; j++) {
-        this.particles[arr[j]].addArcToPath(ctx);
+        const par = this.particles[arr[j]];
+        if (par) par.addArcToPath(ctx);
       }
       ctx.fill();
     }
