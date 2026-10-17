@@ -1,26 +1,97 @@
 <!doctype html>
-<html lang="en">
+<html lang="vi">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Magic Particles ✨</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/src/style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Magic Particles ✨ | Hiệu Ứng Cử Chỉ Tay 3D</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✨</text></svg>">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./src/style.css">
   </head>
   <body>
     <div id="app">
       <div id="canvas-container"></div>
 
-      <!-- Minimal bottom-left status HUD -->
-      <div id="status-hud">
-        <span id="camera-status">Initializing Camera...</span>
-        <span id="gesture-status">Gesture: None</span>
+      <!-- Modern Glassmorphism Interactive HUD -->
+      <aside id="hud" class="glass-panel">
+        <header class="hud-header">
+          <div class="hud-title-row">
+            <span class="hud-logo">✨</span>
+            <h1 class="hud-title">Magic Particles</h1>
+          </div>
+          <div id="camera-status" class="status-badge status-loading">
+            <span class="status-dot"></span>
+            <span class="status-text">Đang tải Camera...</span>
+          </div>
+        </header>
+
+        <!-- Gesture Guide / Interactive Buttons -->
+        <div class="gesture-guide">
+          <div class="guide-title">Cử chỉ tay & Hiệu ứng:</div>
+          <div class="gesture-buttons">
+            <button class="gesture-btn" data-gesture="Saturn" title="Xòe bàn tay">
+              <span class="btn-icon">🖐️</span>
+              <div class="btn-text">
+                <span class="btn-name">Sao Thổ</span>
+                <span class="btn-hint">Xòe 4-5 ngón</span>
+              </div>
+            </button>
+            <button class="gesture-btn" data-gesture="LoveLetter" title="Giơ 2 ngón tay chữ V">
+              <span class="btn-icon">✌️</span>
+              <div class="btn-text">
+                <span class="btn-name">I Love You</span>
+                <span class="btn-hint">Giơ 2 ngón (chữ V)</span>
+              </div>
+            </button>
+            <button class="gesture-btn" data-gesture="Heart" title="Nắm chặt bàn tay">
+              <span class="btn-icon">✊</span>
+              <div class="btn-text">
+                <span class="btn-name">Trái Tim Đập</span>
+                <span class="btn-hint">Nắm chặt tay</span>
+              </div>
+            </button>
+            <button class="gesture-btn" data-gesture="StarryNight" title="Giơ 3 ngón tay">
+              <span class="btn-icon">🤟</span>
+              <div class="btn-text">
+                <span class="btn-name">Bầu Trời Sao</span>
+                <span class="btn-hint">Giơ 3 ngón tay</span>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Quick Controls -->
+        <footer class="hud-footer">
+          <button id="toggle-camera-view" class="hud-ctrl-btn" title="Bật/Tắt xem trước Camera">
+            📷 Camera
+          </button>
+          <button id="toggle-fullscreen" class="hud-ctrl-btn" title="Toàn màn hình">
+            ⛶ Toàn màn hình
+          </button>
+          <button id="toggle-hud" class="hud-ctrl-btn" title="Ẩn bảng điều khiển">
+            ✕ Ẩn
+          </button>
+        </footer>
+      </aside>
+
+      <!-- Floating Button to restore HUD if closed -->
+      <button id="hud-toggle-floating" class="floating-toggle-btn" title="Mở bảng điều khiển" style="display: none;">
+        ✨ Menu
+      </button>
+
+      <!-- Mini Camera PiP Preview (collapsible/toggleable) -->
+      <div id="camera-preview-container" class="camera-preview-hidden">
+        <video id="webcam" autoplay playsinline muted></video>
+        <span class="camera-pip-label">Webcam Feed</span>
       </div>
 
-      <!-- Hidden webcam for MediaPipe -->
-      <video id="webcam" autoplay playsinline muted style="display: none;"></video>
+      <!-- Center Toast Notification for active gesture -->
+      <div id="gesture-toast" class="toast-hidden">
+        <span id="toast-icon">✨</span>
+        <span id="toast-text">Saturn</span>
+      </div>
     </div>
 
-    <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="./src/main.ts"></script>
   </body>
 </html>

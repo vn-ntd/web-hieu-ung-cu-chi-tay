@@ -2,24 +2,34 @@ import { FilesetResolver, HandLandmarker, type HandLandmarkerResult, type Normal
 
 export type Gesture = 'Saturn' | 'LoveLetter' | 'StarryNight' | 'Heart' | 'None';
 
-interface SmoothLandmark { x: number; y: number; z: number; }
+interface SmoothLandmark {
+  x: number;
+  y: number;
+  z: number;
+}
 
 export class HandTracker {
   private videoElement: HTMLVideoElement;
-  private handLandmarker!: HandLandmarker;
-  private isInitializing = true;
-  private lastVideoTime  = -1;
-  private _detecting     = false;
+  private handLandmarker: HandLandmarker | null = null;
+  public isInitializing = true;
+  private lastVideoTime = -1;
+  private _detecting = false;
 
-  public currentGesture:   Gesture = 'None';
+  public currentGesture: Gesture = 'None';
   public currentLandmarks: NormalizedLandmark[] | null = null;
-  public smoothLandmarks:  SmoothLandmark[] | null = null;
+  public smoothLandmarks: SmoothLandmark[] | null = null;
   private _targetLandmarks: SmoothLandmark[] | null = null;
+
+  // Gesture debouncing / stabilization (require 3 consecutive frames)
+  private _pendingGesture: Gesture = 'None';
+  private _consecutiveFrames = 0;
+  private readonly CONFIRM_FRAMES = 3;
 
   public onGestureChange?: (gesture: Gesture) => void;
   public onReady?: () => void;
+  public onError?: (errorMessage: string) => void;
 
-  private readonly LERP_ALPHA = 0.3;
+  private readonly LERP_ALPHA = 0.35;
 
   constructor(videoElementId: string) {
     this.videoElement = document.getElementById(videoElementId) as HTMLVideoElement;
@@ -29,18 +39,43 @@ export class HandTracker {
   private async _init() {
     try {
       const vision = await FilesetResolver.forVisionTasks(
-        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
+        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/wasm'
       );
-      this.handLandmarker = await HandLandmarker.createFromOptions(vision, {
-        baseOptions: {
-          modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
-          delegate: 'GPU',
+
+      // Attempt GPU first, fallback to CPU
+      try {
+        this.handLandmarker = await HandLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+            delegate: 'GPU',
+          },
+          runningMode: 'VIDEO',
+          numHands: 1,
+        });
+      } catch (gpuError) {
+        console.warn('GPU delegate failed, fallback to CPU delegate:', gpuError);
+        this.handLandmarker = await HandLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+            delegate: 'CPU',
+          },
+          runningMode: 'VIDEO',
+          numHands: 1,
+        });
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Trình duyệt không hỗ trợ truy cập Webcam hoặc chưa có HTTPS');
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          facingMode: 'user',
         },
-        runningMode: 'VIDEO',
-        numHands: 1,
       });
 
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
       this.videoElement.srcObject = stream;
       await this.videoElement.play();
 
@@ -50,20 +85,21 @@ export class HandTracker {
           if (this.onReady) this.onReady();
         }
       });
-    } catch (err) {
-      console.error('HandTracker init error:', err);
-      alert('Camera access is required for hand tracking.');
+    } catch (err: unknown) {
+      console.error('HandTracker initialization error:', err);
+      this.isInitializing = false;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (this.onError) this.onError(msg);
     }
   }
 
-  /** Called every draw() frame — fires async detection + lerps smooth landmarks. */
   public predict() {
     if (this.isInitializing && this.videoElement.readyState >= 2 && this.videoElement.videoWidth > 0) {
       this.isInitializing = false;
       if (this.onReady) this.onReady();
     }
-    if (this.isInitializing || !this.videoElement.videoWidth) return;
-    if (this.videoElement.paused) this.videoElement.play();
+    if (this.isInitializing || !this.videoElement.videoWidth || !this.handLandmarker) return;
+    if (this.videoElement.paused) this.videoElement.play().catch(() => {});
 
     if (!this._detecting && this.lastVideoTime !== this.videoElement.currentTime) {
       this._detecting = true;
@@ -72,8 +108,11 @@ export class HandTracker {
 
       queueMicrotask(() => {
         try {
+          if (!this.handLandmarker) return;
           const results = this.handLandmarker.detectForVideo(this.videoElement, captureTime);
           this._processResults(results);
+        } catch (e) {
+          console.warn('Frame detection error:', e);
         } finally {
           this._detecting = false;
         }
@@ -84,14 +123,18 @@ export class HandTracker {
   }
 
   private _lerpSmooth() {
-    if (!this._targetLandmarks) { this.smoothLandmarks = null; return; }
+    if (!this._targetLandmarks) {
+      this.smoothLandmarks = null;
+      return;
+    }
     const target = this._targetLandmarks;
-    const alpha  = this.LERP_ALPHA;
+    const alpha = this.LERP_ALPHA;
 
     if (!this.smoothLandmarks || this.smoothLandmarks.length !== target.length) {
       this.smoothLandmarks = target.map(l => ({ x: l.x, y: l.y, z: l.z }));
       return;
     }
+
     const smooth = this.smoothLandmarks;
     for (let i = 0; i < target.length; i++) {
       smooth[i].x += (target[i].x - smooth[i].x) * alpha;
@@ -106,33 +149,30 @@ export class HandTracker {
       this.currentLandmarks = lm;
       this._targetLandmarks = lm.map(l => ({ x: l.x, y: l.y, z: l.z }));
 
-      const next = this._classifyGesture(lm);
-      if (next !== this.currentGesture) {
-        this.currentGesture = next;
-        if (this.onGestureChange) this.onGestureChange(next);
-      }
+      const raw = this._classifyGesture(lm);
+      this._stabilizeGesture(raw);
     } else {
       this.currentLandmarks = null;
       this._targetLandmarks = null;
-      if (this.currentGesture !== 'None') {
-        this.currentGesture = 'None';
-        if (this.onGestureChange) this.onGestureChange('None');
+      this._stabilizeGesture('None');
+    }
+  }
+
+  private _stabilizeGesture(raw: Gesture) {
+    if (raw === this._pendingGesture) {
+      this._consecutiveFrames++;
+      if (this._consecutiveFrames >= this.CONFIRM_FRAMES && this.currentGesture !== raw) {
+        this.currentGesture = raw;
+        if (this.onGestureChange) this.onGestureChange(raw);
       }
+    } else {
+      this._pendingGesture = raw;
+      this._consecutiveFrames = 1;
     }
   }
 
   /**
-   * Gesture classification via squared-distance finger extension.
-   * Tip farther from wrist than its PIP → finger is "up".
-   *
-   *  Landmark pairs → Index:8/6 · Middle:12/10 · Ring:16/14 · Pinky:20/18
-   *
-   * Priority order:
-   *  ≥ 4 extended    → Magnet      (open palm — attract to index tip)
-   *  Index+Mid+Ring  → StarryNight (exactly 3 specific fingers)
-   *  Index+Mid only  → LoveLetter  (peace/V sign)
-   *  ≤ 1 extended    → Heart       (fist)
-   *  Else            → Magnet      (partial open — treat as attraction)
+   * Robust finger extension detection relative to wrist
    */
   private _classifyGesture(lm: NormalizedLandmark[]): Gesture {
     const w = lm[0]; // wrist
@@ -147,13 +187,28 @@ export class HandTracker {
     const ringUp   = d2(w, lm[16]) > d2(w, lm[14]);
     const pinkyUp  = d2(w, lm[20]) > d2(w, lm[18]);
 
-    const ext = [indexUp, middleUp, ringUp, pinkyUp].filter(Boolean).length;
+    const extCount = [indexUp, middleUp, ringUp, pinkyUp].filter(Boolean).length;
 
-    if (ext >= 4)                               return 'Saturn';      // 🖐 Open palm
-    if (indexUp && middleUp && ringUp && !pinkyUp) return 'StarryNight'; // ☝✌💍 3-finger
-    if (indexUp && middleUp && !ringUp && !pinkyUp) return 'LoveLetter'; // ✌ Peace
-    if (ext <= 1)                               return 'Heart';       // ✊ Fist
+    // 1. Open palm (4 or 5 fingers extended) -> Saturn
+    if (extCount >= 4) {
+      return 'Saturn';
+    }
 
-    return 'Saturn'; // Transitional
+    // 2. Three fingers (Index + Middle + Ring) -> Starry Night
+    if (indexUp && middleUp && ringUp && !pinkyUp) {
+      return 'StarryNight';
+    }
+
+    // 3. Peace sign / V (Index + Middle only) -> Love Letter "I Love You"
+    if (indexUp && middleUp && !ringUp && !pinkyUp) {
+      return 'LoveLetter';
+    }
+
+    // 4. Fist (0 or 1 finger extended) -> Heart
+    if (extCount <= 1) {
+      return 'Heart';
+    }
+
+    return 'Saturn';
   }
 }

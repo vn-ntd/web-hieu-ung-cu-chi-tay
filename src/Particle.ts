@@ -1,90 +1,103 @@
-import p5 from 'p5';
-
+/**
+ * High-performance particle using primitive arithmetic (zero vector object allocation per frame).
+ */
 export class Particle {
-  public pos: p5.Vector;
-  public vel: p5.Vector;
-  public acc: p5.Vector;
+  public x: number;
+  public y: number;
+  public vx: number;
+  public vy: number;
+  public ax: number;
+  public ay: number;
+
   public maxSpeed: number;
   public maxForce: number;
-  public size: number;
   public friction: number;
-
-  /** Rainbow hue offset per particle (0-360) — used for HSB coloring */
+  public size: number;
   public hueOffset: number;
 
-  // Pre-allocated scratch vectors — reused every frame to avoid GC pressure
-  private _desired: p5.Vector;
-  private _steer: p5.Vector;
+  constructor(x: number, y: number) {
+    this.x = x;
+    this.y = y;
+    this.vx = (Math.random() - 0.5) * 2;
+    this.vy = (Math.random() - 0.5) * 2;
+    this.ax = 0;
+    this.ay = 0;
 
-  private p: p5;
-
-  constructor(p: p5, x: number, y: number) {
-    this.p = p;
-    this.pos = p.createVector(x, y);
-    this.vel = p.createVector(p.random(-1, 1), p.random(-1, 1));
-    this.acc = p.createVector(0, 0);
-
-    // Pre-allocate scratch vectors once — reused in arrive/seek/flee
-    this._desired = p.createVector(0, 0);
-    this._steer   = p.createVector(0, 0);
-
-    this.maxSpeed = p.random(4, 12);
-    this.maxForce = p.random(0.3, 0.8);
+    this.maxSpeed = 5 + Math.random() * 9;
+    this.maxForce = 0.35 + Math.random() * 0.55;
     this.friction = 0.92;
-    this.size = p.random(2.5, 6);
-    this.hueOffset = p.random(360);
+    this.size = 1.3 + Math.random() * 2.2;
+    this.hueOffset = Math.random() * 360;
   }
 
-  public applyForce(force: p5.Vector) {
-    this.acc.add(force);
-  }
+  /**
+   * Arrive steering algorithm with pure scalar math (zero allocations)
+   */
+  public arrive(tx: number, ty: number, slowdownRadius: number = 180, forceMultiplier: number = 1.0) {
+    const dx = tx - this.x;
+    const dy = ty - this.y;
+    const d = Math.hypot(dx, dy);
 
-  /** Arrive — uses pre-allocated scratch vectors (zero heap alloc per call) */
-  public arrive(tx: number, ty: number, slowdownRadius: number = 200, forceMultiplier: number = 1.0) {
-    this._desired.set(tx - this.pos.x, ty - this.pos.y);
-    const d = this._desired.mag();
-    if (d < 1) { this.vel.mult(0.9); return; }
+    if (d < 1) {
+      this.vx *= 0.88;
+      this.vy *= 0.88;
+      return;
+    }
 
     let speed = this.maxSpeed;
     if (d < slowdownRadius) {
-      speed = this.p.map(d, 0, slowdownRadius, 0, this.maxSpeed);
+      speed = (d / slowdownRadius) * this.maxSpeed;
     }
-    this._desired.setMag(speed);
 
-    this._steer.set(this._desired.x - this.vel.x, this._desired.y - this.vel.y);
-    const mag = this._steer.mag();
+    const invD = 1 / d;
+    const desiredX = dx * invD * speed;
+    const desiredY = dy * invD * speed;
+
+    let steerX = desiredX - this.vx;
+    let steerY = desiredY - this.vy;
+    const steerMag = Math.hypot(steerX, steerY);
     const limit = this.maxForce * forceMultiplier;
-    if (mag > limit) this._steer.mult(limit / mag);
 
-    this.acc.add(this._steer);
-  }
+    if (steerMag > limit) {
+      const scale = limit / steerMag;
+      steerX *= scale;
+      steerY *= scale;
+    }
 
-  /** Wander — small random nudge applied directly */
-  public applyWander(rndX: number, rndY: number) {
-    this._steer.set(rndX, rndY);
-    this.acc.add(this._steer);
+    this.ax += steerX;
+    this.ay += steerY;
   }
 
   public update() {
-    this.vel.add(this.acc);
-    this.vel.mult(this.friction);
-    this.vel.limit(this.maxSpeed);
-    this.pos.add(this.vel);
-    this.acc.x = 0;
-    this.acc.y = 0;
+    this.vx += this.ax;
+    this.vy += this.ay;
+    this.vx *= this.friction;
+    this.vy *= this.friction;
+
+    const vMag = Math.hypot(this.vx, this.vy);
+    if (vMag > this.maxSpeed) {
+      const scale = this.maxSpeed / vMag;
+      this.vx *= scale;
+      this.vy *= scale;
+    }
+
+    this.x += this.vx;
+    this.y += this.vy;
+    this.ax = 0;
+    this.ay = 0;
   }
 
-  /** Append a core arc sub-path for batched rendering. Caller handles fillStyle/beginPath. */
+  /** Append core arc for batched canvas path */
   public addArcToPath(ctx: CanvasRenderingContext2D) {
-    const r = this.size * 0.5;
-    ctx.moveTo(this.pos.x + r, this.pos.y);
-    ctx.arc(this.pos.x, this.pos.y, r, 0, Math.PI * 2);
+    const r = this.size * 0.55;
+    ctx.moveTo(this.x + r, this.y);
+    ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
   }
 
-  /** Append a larger glow arc sub-path (outer halo, drawn at lower alpha). */
+  /** Append glow arc for batched ambient halo */
   public addGlowToPath(ctx: CanvasRenderingContext2D) {
-    const r = this.size * 1.4;
-    ctx.moveTo(this.pos.x + r, this.pos.y);
-    ctx.arc(this.pos.x, this.pos.y, r, 0, Math.PI * 2);
+    const r = this.size * 1.55;
+    ctx.moveTo(this.x + r, this.y);
+    ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
   }
 }
