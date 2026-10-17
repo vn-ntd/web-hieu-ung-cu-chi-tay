@@ -1,5 +1,0 @@
-﻿src/main.ts(8,11): error TS2564: Property 'scene' has no initializer and is not definitely assigned in the constructor.
-src/main.ts(9,11): error TS2564: Property 'camera' has no initializer and is not definitely assigned in the constructor.
-src/main.ts(10,11): error TS2564: Property 'renderer' has no initializer and is not definitely assigned in the constructor.
-src/main.ts(11,11): error TS2564: Property 'controls' has no initializer and is not definitely assigned in the constructor.
-src/main.ts(22,10): error TS2565: Property 'scene' is used before being assigned.

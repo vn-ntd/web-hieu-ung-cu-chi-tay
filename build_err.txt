@@ -1,8 +1,0 @@
-﻿src/HandTracker.ts(1,43): error TS1484: 'HandLandmarkerResult' is a type and must be imported using a type-only import when 'verbatimModuleSyntax' is enabled.
-src/main.ts(1,24): error TS7016: Could not find a declaration file for module 'three'. 'C:/Users/nguye/Documents/code/web to tinh/node_modules/three/build/three.module.js' implicitly has an 'any' type.
-  Try `npm i --save-dev @types/three` if it exists or add a new declaration (.d.ts) file containing `declare module 'three';`
-src/main.ts(2,31): error TS7016: Could not find a declaration file for module 'three/examples/jsm/controls/OrbitControls.js'. 'C:/Users/nguye/Documents/code/web to tinh/node_modules/three/examples/jsm/controls/OrbitControls.js' implicitly has an 'any' type.
-  Try `npm i --save-dev @types/three` if it exists or add a new declaration (.d.ts) file containing `declare module 'three/examples/jsm/controls/OrbitControls.js';`
-src/ParticleSystem.ts(1,24): error TS7016: Could not find a declaration file for module 'three'. 'C:/Users/nguye/Documents/code/web to tinh/node_modules/three/build/three.module.js' implicitly has an 'any' type.
-  Try `npm i --save-dev @types/three` if it exists or add a new declaration (.d.ts) file containing `declare module 'three';`
-src/ParticleSystem.ts(16,11): error TS6133: 'targetPositions' is declared but its value is never read.

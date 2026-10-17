@@ -3,47 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Interactive 3D Particles</title>
+    <title>Magic Particles ✨</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/src/style.css">
   </head>
   <body>
     <div id="app">
       <div id="canvas-container"></div>
-      
-      <div id="ui-panel" class="glass-panel">
-        <h2>Particle Controls</h2>
-        
-        <div class="control-group">
-          <label for="pattern-select">Pattern</label>
-          <select id="pattern-select">
-            <option value="galaxy">Galaxy</option>
-            <option value="saturn">Saturn</option>
-            <option value="iloveyou">I Love You</option>
-            <option value="heart">Heart</option>
-          </select>
-        </div>
 
-        <div class="control-group">
-          <label for="color-picker">Color Theme</label>
-          <input type="color" id="color-picker" value="#00d2ff">
-        </div>
-
-        <div class="control-group">
-          <button id="fullscreen-btn">Toggle Fullscreen</button>
-        </div>
-
-        <div class="status-indicator">
-          <span id="camera-status">Initializing Camera...</span>
-          <br>
-          <span id="gesture-status">Gesture: None</span>
-        </div>
+      <!-- Minimal bottom-left status HUD -->
+      <div id="status-hud">
+        <span id="camera-status">Initializing Camera...</span>
+        <span id="gesture-status">Gesture: None</span>
       </div>
-      
-      <!-- Video element for MediaPipe (hidden) -->
+
+      <!-- Hidden webcam for MediaPipe -->
       <video id="webcam" autoplay playsinline muted style="display: none;"></video>
     </div>
-    
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
